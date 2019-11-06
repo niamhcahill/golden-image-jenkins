@@ -1,0 +1,52 @@
+{
+  "variables": {
+    "aws_access_key": "{{env `AWS_ACCESS_KEY`}}",
+    "aws_secret_key": "{{env `AWS_SECRET_KEY`}}",
+    "ssh_username":   "ec2-user",
+    "region":         "us-east-1",
+    "customer_name":  "DocuSign",
+    "dept":           "SA",
+    "instance_type":  "t2.small",
+    "ami_base": "ami-04717c53432dbb023",
+    "ami_sha":  "{{env `SHA`}}"
+  },
+  "builders": [
+    {
+      "type":          "amazon-ebs",
+      "access_key":    "{{ user `aws_access_key` }}",
+      "secret_key":    "{{ user `aws_secret_key` }}",
+      "region":        "us-east-1",
+      "instance_type": "{{ user `instance_type` }}",
+      "source_ami": "ami-04717c53432dbb023",
+      "ami_name": "{{ user `customer_name` }}_{{ user `dept` }}_rhel_7_5_{{timestamp}}",
+      "ssh_username": "{{ user `ssh_username` }}"
+    }
+  ],
+  "post-processors": [
+    {
+      "output": "manifest-base.json",
+      "strip_path": true,
+      "type": "manifest"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "inline": [
+        "sleep 10",
+        "curl https://raw.githubusercontent.com/habitat-sh/habitat/master/components/hab/install.sh | sudo bash",
+        "sudo groupadd hab",
+        "sudo useradd -g hab hab",
+	"echo 'installing the chef client'",
+        "sudo hab pkg install nc-np/config-baseline --channel dev",
+        "cd $(hab pkg path nc-np/config-baseline)",
+        "sudo hab pkg exec chef/chef-client chef-client -z -c config/bootstrap-config.rb",
+        "echo 'installing InSpec'",
+	"echo 'accepting Inspec license'",
+        "sudo mkdir -p /etc/chef/accepted_licenses && sudo touch /etc/chef/accepted_licenses/inspec",
+        "sudo hab pkg install nc-np/linux_baseline --channel unstable",
+        "sudo hab pkg exec chef/inspec inspec exec $(hab pkg path nc-np/linux_baseline)/*.tar.gz --no-distinct-exit --json-config $(hab pkg path nc-np/linux_baseline)/config/bootstrap-inspec.json"
+      ]
+    }
+  ]
+}  
